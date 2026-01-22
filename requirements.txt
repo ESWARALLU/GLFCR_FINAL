@@ -1,0 +1,45 @@
+# Updated requirements for GLF-CR with modern PyTorch/CUDA support
+# Compatible with PyTorch 2.x and CUDA 11.x/12.x
+# Kaggle-compatible version (uses tifffile instead of rasterio)
+
+# Core dependencies
+torch>=2.0.0
+torchvision>=0.15.0
+torchaudio>=2.0.0
+
+# Alternative: PyTorch 1.13.x (more compatible with older systems)
+# torch==1.13.1
+# torchvision==0.14.1
+
+# Scientific computing
+numpy>=1.19.0,<2.0.0
+scipy>=1.5.0
+
+# Image processing (Kaggle compatible)
+tifffile>=2022.0.0
+Pillow>=8.0.0
+
+# Vision transformers
+timm>=0.9.0
+
+# Experiment tracking
+tensorboard>=2.10.0
+wandb>=0.13.0
+
+# Utilities
+tqdm>=4.60.0
+PyYAML>=5.4.0
+matplotlib>=3.3.0
+pandas>=1.1.0
+
+# Model analysis
+thop>=0.1.0
+
+# Data handling
+opencv-python>=4.5.0
+
+# Development tools (optional)
+pytest>=7.0.0
+black>=22.0.0
+# Perceptual metric
+lpips>=0.1.4
