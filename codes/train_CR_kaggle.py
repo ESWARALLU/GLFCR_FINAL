@@ -572,6 +572,11 @@ if __name__ == '__main__':
             return base_lr
         return base_lr * (epoch + 1) / warmup_epochs
 
+    # Initialize Scaler for AMP
+    scaler = torch.cuda.amp.GradScaler(enabled=True)
+    if not is_ddp or local_rank in [-1, 0]:
+        print("Automatic Mixed Precision (AMP) enabled.")
+
     for epoch in range(start_epoch, opts.max_epochs):
         # Apply warmup if needed
         if epoch < opts.warmup_epochs:
@@ -594,6 +599,7 @@ if __name__ == '__main__':
         model.net_G.train()
         
         epoch_loss = 0.0
+        total_train_psnr = 0.0  # Accumulate PSNR for all batches
         num_batches = 0
         
         # Progress bar
@@ -609,13 +615,54 @@ if __name__ == '__main__':
             
             try:
                 model.set_input(data)
-                batch_loss = model.optimize_parameters(grad_clip=opts.grad_clip)
                 
+                # AMP: Autocast
+                with torch.cuda.amp.autocast(enabled=True):
+                    # Manual optimization step (unwrapping optimize_parameters to inject scaler)
+                    # OR we modify optimize_parameters.
+                    # Given the structure, let's modify the loop to handle forward/loss/backward directly here
+                    # or assume the model can handle it.
+                    # Since clean modification is better, let's bring the optimize logic here for AMP control
+                    
+                    model.optimizer_G.zero_grad()
+                    pred = model.forward()
+                    
+                    # Compute loss
+                    if isinstance(model.criterion, EnhancedLoss):
+                        loss, loss_dict = model.criterion(pred, model.cloudfree_data, cloudy_input=model.cloudy_optical)
+                    else:
+                        loss = model.criterion(pred, model.cloudfree_data)
+                
+                # AMP: Backward and Step
+                scaler.scale(loss).backward()
+                
+                if opts.grad_clip > 0:
+                    scaler.unscale_(model.optimizer_G)
+                    torch.nn.utils.clip_grad_norm_(model.net_G.parameters(), opts.grad_clip)
+                    
+                scaler.step(model.optimizer_G)
+                scaler.update()
+                
+                batch_loss = loss.item()
                 epoch_loss += batch_loss
+                
+                # Calculate Batch PSNR for monitoring
+                with torch.no_grad():
+                    # Ensure float32 for metric calculation to avoid overflow/precision issues in half precision
+                    batch_psnr = PSNR(pred.float(), model.cloudfree_data.float())
+                    if isinstance(batch_psnr, torch.Tensor):
+                        batch_psnr = float(batch_psnr.item())
+                    else:
+                        batch_psnr = float(batch_psnr)
+                    
+                    if not (math.isnan(batch_psnr) or math.isinf(batch_psnr)):
+                         total_train_psnr += batch_psnr
+                
                 num_batches += 1
                 
                 avg_loss = epoch_loss / num_batches
-                progress_bar.set_postfix({'loss': f'{avg_loss:.4f}'})
+                avg_psnr_running = total_train_psnr / num_batches
+                progress_bar.set_postfix({'loss': f'{avg_loss:.4f}', 'PSNR': f'{avg_psnr_running:.2f}'})
             
             except Exception as e:
                 print(f"Error in training batch: {e}")
@@ -624,19 +671,9 @@ if __name__ == '__main__':
         # Epoch statistics
         if num_batches > 0:
             avg_train_loss = epoch_loss / num_batches
+            avg_train_psnr = total_train_psnr / num_batches # Accurate average PSNR
         else:
             avg_train_loss = 0.0
-        
-        # Training PSNR on last batch
-        try:
-            with torch.no_grad():
-                avg_train_psnr = PSNR(model.pred_Cloudfree_data, model.cloudfree_data)
-                # PSNR now returns a float directly
-                if isinstance(avg_train_psnr, torch.Tensor):
-                    avg_train_psnr = float(avg_train_psnr.item())
-                else:
-                    avg_train_psnr = float(avg_train_psnr)
-        except Exception:
             avg_train_psnr = 0.0
         
         # Validation (only on main process)
