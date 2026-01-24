@@ -16,20 +16,27 @@ import numpy as np
 
 
 class ResBlock(nn.Module):
-    """Residual Block: x + Conv(Relu(Conv(x)))"""
+    """Residual Block with GroupNorm for better training stability"""
     def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, padding=1):
         super(ResBlock, self).__init__()
         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding)
-        self.bn1 = nn.BatchNorm2d(out_channels)  # Optional: BatchNorm often helps
+        # Use GroupNorm instead of BatchNorm for better stability
+        # 32 groups is a good default, but we need to ensure it divides the channels
+        num_groups = min(32, out_channels) if out_channels >= 32 else out_channels
+        # Ensure num_groups divides out_channels
+        while out_channels % num_groups != 0:
+            num_groups -= 1
+        self.norm1 = nn.GroupNorm(num_groups, out_channels)
         self.relu = nn.ReLU(inplace=True)
         self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size, 1, padding)
-        self.bn2 = nn.BatchNorm2d(out_channels)
+        self.norm2 = nn.GroupNorm(num_groups, out_channels)
         
         # Shortcut handling
         if stride != 1 or in_channels != out_channels:
+            # Also use GroupNorm in shortcut
             self.shortcut = nn.Sequential(
                 nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride),
-                nn.BatchNorm2d(out_channels)
+                nn.GroupNorm(num_groups, out_channels)
             )
         else:
             self.shortcut = nn.Identity()
@@ -38,11 +45,11 @@ class ResBlock(nn.Module):
         identity = self.shortcut(x)
         
         out = self.conv1(x)
-        out = self.bn1(out)
+        out = self.norm1(out)
         out = self.relu(out)
         
         out = self.conv2(out)
-        out = self.bn2(out)
+        out = self.norm2(out)
         
         out += identity
         out = self.relu(out)
@@ -338,9 +345,11 @@ class CloudRemovalCrossAttention(nn.Module):
         # 5. Decoder
         residual_cloud = self.decoder(refined_3, feat_opt_2, feat_opt_1)
         
-        # 6. Global Residual Connection (CRITICAL FIX)
-        # The model predicts the "residual" (what to change), which we add to the input
-        output = residual_cloud + optical_img
+        # 6. Direct Prediction (FIXED)
+        # Changed from global residual to direct prediction for easier training
+        # The decoder now directly predicts the cloud-free image
+        # Previous problematic approach: output = residual_cloud + optical_img
+        output = residual_cloud
         
         return output
 
@@ -365,5 +374,5 @@ if __name__ == "__main__":
     print(f"Input SAR shape: {sar_img.shape}")
     print(f"Output shape: {output.shape}")
     print(f"Expected output shape: torch.Size([{batch_size}, 13, {height}, {width}])")
-    print(f"Global Residual Verified: Output is sum of Decoder + Input ({output.requires_grad})")
+    print(f"Direct Prediction Mode: Decoder directly outputs cloud-free image")
     print(f"Model parameters: {sum(p.numel() for p in model.parameters()) / 1e6:.2f}M")

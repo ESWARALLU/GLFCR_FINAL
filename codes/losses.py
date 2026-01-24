@@ -42,8 +42,13 @@ class PerceptualLoss(nn.Module):
     """
     def __init__(self, layers=['relu3_2', 'relu4_2', 'relu5_2'], weights=[0.2, 0.4, 0.4]):
         super(PerceptualLoss, self).__init__()
-        # Load VGG19 pretrained
-        vgg = models.vgg19(pretrained=True).features
+        # Load VGG19 with new weights parameter (pretrained argument is deprecated)
+        try:
+            # Try new API (PyTorch >= 1.13)
+            vgg = models.vgg19(weights=models.VGG19_Weights.IMAGENET1K_V1).features
+        except AttributeError:
+            # Fallback to old API for compatibility
+            vgg = models.vgg19(pretrained=True).features
         
         # Freeze parameters
         for param in vgg.parameters():
