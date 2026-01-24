@@ -208,3 +208,41 @@ class EnhancedLoss(nn.Module):
             loss_dict['grad'] = loss_grad.item()
             
         return total_loss, loss_dict
+
+
+class CloudFocusedLoss(nn.Module):
+    """
+    Cloud-Focused Weighted Loss.
+    Applies higher weight to cloudy regions during training.
+    Helps the network focus on difficult cloud removal areas.
+    """
+    def __init__(self, cloud_weight_factor=2.0):
+        super(CloudFocusedLoss, self).__init__()
+        self.cloud_weight_factor = cloud_weight_factor
+        self.l1 = nn.L1Loss(reduction='none')
+    
+    def forward(self, pred, target, cloudy_input):
+        """
+        Args:
+            pred: Predicted cloud-free image
+            target: Ground truth cloud-free image  
+            cloudy_input: Cloudy input image (to compute cloud intensity)
+        """
+        # Compute per-pixel cloud intensity (difference from target)
+        cloud_intensity = torch.abs(cloudy_input - target).mean(dim=1, keepdim=True)  # (B, 1, H, W)
+        
+        # Normalize to [0, 1] range
+        cloud_intensity = cloud_intensity / (cloud_intensity.max() + 1e-8)
+        
+        # Create adaptive weight: higher for cloudy regions
+        # cloud_weight = 1 + cloud_weight_factor * cloud_intensity
+        # This gives: clear regions weight=1, cloudy regions weight=1+factor
+        cloud_weight = 1.0 + self.cloud_weight_factor * cloud_intensity
+        
+        # Compute per-pixel L1 loss
+        pixel_loss = self.l1(pred, target)  # (B, C, H, W)
+        
+        # Apply cloud-based weighting
+        weighted_loss = (pixel_loss * cloud_weight).mean()
+        
+        return weighted_loss

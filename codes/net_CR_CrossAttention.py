@@ -84,10 +84,40 @@ class OpticalEncoder(nn.Module):
         return feat_opt_1, feat_opt_2, feat_opt_3
 
 
+class SpectralAttentionSAR(nn.Module):
+    """
+    Spectral/Channel Attention for SAR features.
+    Different SAR channels (VV, VH) have different information content.
+    Learn to weight them adaptively.
+    """
+    def __init__(self, sar_channels=2, reduction=4):
+        super(SpectralAttentionSAR, self).__init__()
+        # Squeeze: Global average pooling
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        
+        # Excitation: FC layers to learn channel weights
+        self.fc = nn.Sequential(
+            nn.Conv2d(sar_channels, max(1, sar_channels // reduction), 1, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(max(1, sar_channels // reduction), sar_channels, 1, bias=False),
+            nn.Sigmoid()
+        )
+    
+    def forward(self, x):
+        # x: (B, C, H, W)
+        weights = self.avg_pool(x)  # (B, C, 1, 1)
+        weights = self.fc(weights)   # (B, C, 1, 1)
+        return x * weights            # Channel-wise multiplication
+
+
 class SAREncoder(nn.Module):
-    """SAR image encoder with 3 levels, using ResBlocks"""
+    """SAR image encoder with spectral attention and 3 levels"""
     def __init__(self):
         super(SAREncoder, self).__init__()
+        
+        # Spectral attention at input
+        self.spectral_attn = SpectralAttentionSAR(sar_channels=2, reduction=2)
+        
         # E1: input (2, H, W) -> output (64, H, W)
         self.E1 = ResBlock(2, 64, kernel_size=3, stride=1, padding=1)
         
@@ -98,6 +128,9 @@ class SAREncoder(nn.Module):
         self.E3 = ResBlock(128, 256, kernel_size=3, stride=1, padding=1)
         
     def forward(self, x):
+        # Apply spectral attention to raw SAR input
+        x = self.spectral_attn(x)
+        
         feat_sar_1 = self.E1(x)
         x = self.down1(feat_sar_1)
         feat_sar_2 = self.E2(x)
@@ -296,6 +329,29 @@ class Decoder(nn.Module):
         return output
 
 
+class CloudConfidencePredictor(nn.Module):
+    """
+    Predicts cloud confidence map from bottleneck features.
+    Output: 0 = clear region, 1 = cloudy region
+    Used for adaptive residual weighting.
+    """
+    def __init__(self, in_dim=256):
+        super(CloudConfidencePredictor, self).__init__()
+        self.predictor = nn.Sequential(
+            nn.Conv2d(in_dim, 128, 3, padding=1),
+            nn.GroupNorm(16, 128),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(128, 64, 3, padding=1),
+            nn.GroupNorm(8, 64),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(64, 1, 1),
+            nn.Sigmoid()  # Output: [0, 1]
+        )
+    
+    def forward(self, x):
+        return self.predictor(x)
+
+
 class CloudRemovalCrossAttention(nn.Module):
     """
     Complete Cloud Removal Network
@@ -326,6 +382,9 @@ class CloudRemovalCrossAttention(nn.Module):
         
         self.decoder = Decoder(output_channels=13)
         
+        # Cloud-aware weighting predictor
+        self.cloud_predictor = CloudConfidencePredictor(in_dim=256)
+        
     def forward(self, optical_img, sar_img):
         # 1. Encoders
         feat_opt_1, feat_opt_2, feat_opt_3 = self.optical_encoder(optical_img)
@@ -342,14 +401,26 @@ class CloudRemovalCrossAttention(nn.Module):
         # 4. Refinement
         refined_3 = self.refinement(gated_out, feat_opt_3)
         
-        # 5. Decoder
+        # 5. Decoder (predicts residual/correction)
         residual_cloud = self.decoder(refined_3, feat_opt_2, feat_opt_1)
         
-        # 6. Direct Prediction (FIXED)
-        # Changed from global residual to direct prediction for easier training
-        # The decoder now directly predicts the cloud-free image
-        # Previous problematic approach: output = residual_cloud + optical_img
-        output = residual_cloud
+        # 6. Cloud-Aware Weighted Residual (ENHANCED)
+        # Predict cloud confidence map from bottleneck features
+        cloud_confidence = self.cloud_predictor(refined_3)  # (B, 1, H/4, W/4)
+        cloud_confidence = F.interpolate(cloud_confidence, 
+                                        size=optical_img.shape[2:], 
+                                        mode='bilinear', 
+                                        align_corners=True)  # (B, 1, H, W)
+        
+        # Adaptive weighting:
+        # - Clear regions (conf ≈ 0): Use mostly input → (1-0)*residual + 0*input = residual
+        # - Cloudy regions (conf ≈ 1): Use mostly residual → (1-1)*residual + 1*input
+        # Actually we want: clear=input, cloudy=input+residual
+        # So: output = input + conf * residual
+        # This way:
+        #   - Clear (conf=0): output = input + 0 = input (preserved)
+        #   - Cloudy (conf=1): output = input + residual (corrected)
+        output = optical_img + cloud_confidence * residual_cloud
         
         return output
 
@@ -374,5 +445,9 @@ if __name__ == "__main__":
     print(f"Input SAR shape: {sar_img.shape}")
     print(f"Output shape: {output.shape}")
     print(f"Expected output shape: torch.Size([{batch_size}, 13, {height}, {width}])")
-    print(f"Direct Prediction Mode: Decoder directly outputs cloud-free image")
+    print(f"Architecture: Cloud-Aware Weighted Residual Learning")
+    print(f"  - Spectral Attention for SAR: ✓")
+    print(f"  - Cloud Confidence Predictor: ✓")
+    print(f"  - Adaptive Residual Weighting: ✓")
     print(f"Model parameters: {sum(p.numel() for p in model.parameters()) / 1e6:.2f}M")
+    print(f"Expected PSNR target: 35-36 dB")

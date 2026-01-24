@@ -65,6 +65,9 @@ parser.add_argument('--perceptual_weight', type=float, default=1.0, help='Weight
 parser.add_argument('--use_gradient_loss', action='store_true', default=True, help='Use Gradient (Edge-Aware) Loss')
 parser.add_argument('--gradient_weight', type=float, default=0.1, help='Weight for Gradient loss')
 parser.add_argument('--l1_weight', type=float, default=1.0, help='Weight for L1 (Pixel) loss. Lower this to reduce smoothing.')
+# NEW: Cloud-focused loss
+parser.add_argument('--use_cloud_focused_loss', action='store_true', default=False, help='Use Cloud-Focused Weighted Loss')
+parser.add_argument('--cloud_weight_factor', type=float, default=2.0, help='Weight factor for cloudy regions (1.0-5.0)')
 
 
 
