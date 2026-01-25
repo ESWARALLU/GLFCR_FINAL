@@ -63,8 +63,8 @@ parser.add_argument('--contrastive_weight', type=float, default=0.1, help='Weigh
 parser.add_argument('--perceptual_weight', type=float, default=1.0, help='Weight for Perceptual (VGG) loss')
 # NEW: Texture & Gradient controls
 parser.add_argument('--use_gradient_loss', action='store_true', default=True, help='Use Gradient (Edge-Aware) Loss')
-parser.add_argument('--gradient_weight', type=float, default=0.1, help='Weight for Gradient loss')
-parser.add_argument('--l1_weight', type=float, default=1.0, help='Weight for L1 (Pixel) loss. Lower this to reduce smoothing.')
+parser.add_argument('--gradient_weight', type=float, default=0.5, help='Weight for Gradient loss - PHASE 1: Increased from 0.1 to 0.5')
+parser.add_argument('--l1_weight', type=float, default=0.5, help='Weight for L1 (Pixel) loss - PHASE 1: Reduced from 1.0 to 0.5 to reduce smoothing')
 # NEW: Cloud-focused loss
 parser.add_argument('--use_cloud_focused_loss', action='store_true', default=False, help='Use Cloud-Focused Weighted Loss')
 parser.add_argument('--cloud_weight_factor', type=float, default=2.0, help='Weight factor for cloudy regions (1.0-5.0)')
@@ -72,15 +72,15 @@ parser.add_argument('--cloud_weight_factor', type=float, default=2.0, help='Weig
 
 
 parser.add_argument('--optimizer', type=str, default='Adam', help='Adam optimizer')
-parser.add_argument('--lr', type=float, default=1e-4, help='learning rate')
+parser.add_argument('--lr', type=float, default=5e-5, help='learning rate - PHASE 1: Increased from 2.5e-5 to 5e-5')
 parser.add_argument('--weight_decay', type=float, default=1e-5, help='weight decay for regularization')
-parser.add_argument('--lr_scheduler', type=str, default='plateau', choices=['step', 'plateau', 'cosine'], help='learning rate scheduler type')
+parser.add_argument('--lr_scheduler', type=str, default='cosine', choices=['step', 'plateau', 'cosine'], help='learning rate scheduler type - PHASE 1: Changed to cosine')
 parser.add_argument('--lr_step', type=int, default=5, help='lr decay step (for step scheduler)')
 parser.add_argument('--lr_start_epoch_decay', type=int, default=5, help='epoch to start lr decay (for step scheduler)')
-parser.add_argument('--lr_patience', type=int, default=5, help='patience for plateau scheduler')
+parser.add_argument('--lr_patience', type=int, default=8, help='patience for plateau scheduler - PHASE 1: Increased from 5 to 8')
 parser.add_argument('--lr_factor', type=float, default=0.5, help='factor to reduce lr')
-parser.add_argument('--max_epochs', type=int, default=10, help='maximum training epochs')
-parser.add_argument('--early_stop_patience', type=int, default=10, help='early stopping patience (0 to disable)')
+parser.add_argument('--max_epochs', type=int, default=120, help='maximum training epochs - PHASE 1: Increased from 60 to 120')
+parser.add_argument('--early_stop_patience', type=int, default=15, help='early stopping patience - PHASE 1: Increased from 10 to 15')
 parser.add_argument('--grad_clip', type=float, default=1.0, help='gradient clipping threshold (0 to disable)')
 parser.add_argument('--warmup_epochs', type=int, default=0, help='number of warmup epochs')
 parser.add_argument('--save_freq', type=int, default=1, help='save checkpoint every N epochs')
