@@ -28,7 +28,7 @@ except ImportError:
 
 
 ##########################################################
-def test_dataset_split(CR_net, opts, filelist, split_name='test', model_name='RDN', lpips_fn=None):
+def test_dataset_split(CR_net, opts, filelist, split_name='test', model_name='RDN', lpips_fn=None, device='cuda'):
     """Test the model on a specific dataset split (train/val/test)
     Args:
         CR_net: The model to test
@@ -37,6 +37,7 @@ def test_dataset_split(CR_net, opts, filelist, split_name='test', model_name='RD
         split_name: Name of the split ('train', 'val', or 'test')
         model_name: 'RDN' or 'CrossAttention'
         lpips_fn: Pre-initialized LPIPS model (optional)
+        device: Device to use ('cuda' or 'cpu')
     Returns:
         Dictionary containing average metrics and per-image results
     """
@@ -69,9 +70,9 @@ def test_dataset_split(CR_net, opts, filelist, split_name='test', model_name='RD
 
     with torch.no_grad():
         for inputs in iterator:
-            cloudy_data = inputs['cloudy_data'].cuda()
-            cloudfree_data = inputs['cloudfree_data'].cuda()
-            SAR_data = inputs['SAR_data'].cuda()
+            cloudy_data = inputs['cloudy_data'].to(device)
+            cloudfree_data = inputs['cloudfree_data'].to(device)
+            SAR_data = inputs['SAR_data'].to(device)
             file_names = inputs['file_name']
 
             # Handle different model forward signatures
@@ -164,12 +165,13 @@ def test_dataset_split(CR_net, opts, filelist, split_name='test', model_name='RD
 
 
 ##########################################################
-def test_all_splits(CR_net, opts, model_name='RDN'):
+def test_all_splits(CR_net, opts, model_name='RDN', device='cuda'):
     """Test the model on ALL dataset splits (train, val, test)
     Args:
         CR_net: The model to test
         opts: Configuration options
         model_name: 'RDN' or 'CrossAttention'
+        device: Device to use ('cuda' or 'cpu')
     Returns:
         Dictionary containing results for all splits
     """
@@ -189,7 +191,7 @@ def test_all_splits(CR_net, opts, model_name='RDN'):
     if lpips:
         try:
             # use alex net as it is standard for LPIPS metric
-            lpips_fn = lpips.LPIPS(net='alex').cuda()
+            lpips_fn = lpips.LPIPS(net='alex').to(device)
             lpips_fn.eval()
             print("LPIPS model initialized successfully")
         except Exception as e:
@@ -200,17 +202,17 @@ def test_all_splits(CR_net, opts, model_name='RDN'):
     # Test on each split
     if len(train_filelist) > 0:
         all_results['train'] = test_dataset_split(
-            CR_net, opts, train_filelist, 'train', model_name, lpips_fn
+            CR_net, opts, train_filelist, 'train', model_name, lpips_fn, device
         )
     
     if len(val_filelist) > 0:
         all_results['val'] = test_dataset_split(
-            CR_net, opts, val_filelist, 'val', model_name, lpips_fn
+            CR_net, opts, val_filelist, 'val', model_name, lpips_fn, device
         )
     
     if len(test_filelist) > 0:
         all_results['test'] = test_dataset_split(
-            CR_net, opts, test_filelist, 'test', model_name, lpips_fn
+            CR_net, opts, test_filelist, 'test', model_name, lpips_fn, device
         )
     
     # Calculate overall statistics across all splits
@@ -290,10 +292,17 @@ def main():
         if not os.path.exists(opts.data_list_filepath):
             raise FileNotFoundError(f"CSV not found: {opts.data_list_filepath}")
 
+    # Detect device (CUDA or CPU)
+    use_cuda = torch.cuda.is_available()
+    device = torch.device("cuda" if use_cuda else "cpu")
+    
     # Model
     print("="*60)
     print("COMPLETE DATASET TEST - ALL SPLITS")
-    print("Using single GPU (DataParallel disabled)")
+    if use_cuda:
+        print("Using single GPU (DataParallel disabled)")
+    else:
+        print("Using CPU (CUDA not available)")
     print("="*60)
 
     # Load checkpoint FIRST to determine model type
@@ -301,7 +310,7 @@ def main():
     try:
         checkpoint = torch.load(
             opts.checkpoint_path,
-            map_location="cuda",
+            map_location=device,
             weights_only=False     # REQUIRED FIX for PyTorch 2.6
         )
     except Exception as e:
@@ -330,10 +339,10 @@ def main():
     # Load model based on type (or auto-detected type)
     if opts.model_type == 'CrossAttention':
         from net_CR_CrossAttention import CloudRemovalCrossAttention
-        CR_net = CloudRemovalCrossAttention().cuda()
+        CR_net = CloudRemovalCrossAttention().to(device)
     else:
         # Default RDN model
-        CR_net = RDN_residual_CR(opts.crop_size).cuda()
+        CR_net = RDN_residual_CR(opts.crop_size).to(device)
     
     CR_net.eval()
     for p in CR_net.parameters():
@@ -349,7 +358,7 @@ def main():
     print("="*60)
     
     # Test on all splits
-    all_results = test_all_splits(CR_net, opts, model_name=opts.model_type)
+    all_results = test_all_splits(CR_net, opts, model_name=opts.model_type, device=device)
 
     # Save results
     os.makedirs(opts.output_dir, exist_ok=True)
