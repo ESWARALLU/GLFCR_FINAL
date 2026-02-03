@@ -184,11 +184,7 @@ def process_single_image(file_info, model, device, input_data_folder, output_bas
     output_np = output.cpu().squeeze(0).numpy()  # (13, H, W)
     output_np = np.clip(output_np * 10000.0, 0, 10000).astype("float32")
     
-    # Save 13-band TIFF
-    output_tiff_path = os.path.join(image_output_dir, f"{image_name}_predicted_13bands.tif")
-    tifffile.imwrite(output_tiff_path, output_np.astype("float32"))
-    
-    # Save RGB visualization
+    # Save only RGB visualization (PNG) - skipping TIFF to save space
     output_png_path = os.path.join(image_output_dir, f"{image_name}_predicted_rgb.png")
     create_rgb_visualization(output_np, output_png_path)
     
