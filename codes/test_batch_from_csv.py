@@ -268,7 +268,7 @@ def main():
                         help="Path to test.csv file")
     parser.add_argument("--model_checkpoint", type=str, required=True, 
                         help="Path to base model checkpoint (.pth)")
-    parser.add_argument("--output_base_dir", type=str, default="./Test_Images", 
+    parser.add_argument("--output_base_dir", type=str, default="/kaggle/working/Test_Images", 
                         help="Base directory to save all test outputs")
     parser.add_argument("--input_data_folder", type=str, default="/kaggle/input/sen12ms-cr-winter",
                         help="Root folder containing input data")
