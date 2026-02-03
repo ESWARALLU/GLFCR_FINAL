@@ -142,7 +142,7 @@ def process_single_image(file_info, model, device, input_data_folder, output_bas
         file_info: Dictionary containing file paths and metadata
         model: Loaded model
         device: CUDA or CPU device
-        input_data_folder: Base folder containing input data
+        input_data_folder: Base folder containing input data (for winter dataset)
         output_base_dir: Base directory for all test outputs
     """
     # Extract image name (without extension)
@@ -152,9 +152,18 @@ def process_single_image(file_info, model, device, input_data_folder, output_bas
     image_output_dir = os.path.join(output_base_dir, image_name)
     os.makedirs(image_output_dir, exist_ok=True)
     
-    # Construct full paths
-    sar_path = os.path.join(input_data_folder, file_info['s1_folder'], file_info['s1_filename'])
-    optical_path = os.path.join(input_data_folder, file_info['s2_cloudy_folder'], file_info['s2_cloudy_filename'])
+    # Determine correct root folder based on dataset type
+    dataset_type = file_info.get('dataset_type', 'winter')
+    if dataset_type == 'spring':
+        root_folder = '/kaggle/input/t-glf-cr-winter'
+    elif dataset_type == 'fall':
+        root_folder = '/kaggle/input/t-glf-cr-fall'
+    else:  # winter or default
+        root_folder = input_data_folder
+    
+    # Construct full paths with correct root
+    sar_path = os.path.join(root_folder, file_info['s1_folder'], file_info['s1_filename'])
+    optical_path = os.path.join(root_folder, file_info['s2_cloudy_folder'], file_info['s2_cloudy_filename'])
     
     # Verify files exist
     if not os.path.exists(sar_path):
