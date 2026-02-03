@@ -55,7 +55,7 @@ parser.add_argument('--cloud_threshold', type=float, default=0.2)
 parser.add_argument('--is_test', type=bool, default=False, help='whether in test mode')
 
 # Enhancement arguments
-parser.add_argument('--use_cross_attn', action='store_true', default=True, help='Use Cross-Modal Attention in RDN')
+parser.add_argument('--use_cross_attn', action='store_true', default=False, help='Use Cross-Modal Attention in RDN')
 parser.add_argument('--use_fft_loss', action='store_true', default=True, help='Use Frequency Domain Loss')
 parser.add_argument('--fft_weight', type=float, default=0.5, help='Weight for FFT loss')
 parser.add_argument('--use_contrastive_loss', action='store_true', default=True, help='Use Contrastive Loss')
@@ -97,6 +97,11 @@ parser.add_argument('--use_ddp', action='store_true', default=False, help='Use D
 parser.add_argument('--local_rank', type=int, default=-1, help='Local rank for distributed training')
 
 opts = parser.parse_args()
+
+# SAFETY LOGIC: Automatically enable Cross-Attention if model_name implies it
+if opts.model_name == 'CrossAttention':
+    opts.use_cross_attn = True
+    print("Auto-enabling Cross-Attention because model_name='CrossAttention'")
 
 ##===================================================##
 ##************** Training functions *****************##
